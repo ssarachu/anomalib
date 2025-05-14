@@ -80,7 +80,6 @@ class ValSplitMode(str, Enum):
         FROM_TRAIN: Split from training set
         FROM_TEST: Split from test set
         SYNTHETIC: Synthetic validation split
-        FROM_DIR: Use dedicated validation directory (for datasets that have one)
     """
 
     NONE = "none"
@@ -88,7 +87,6 @@ class ValSplitMode(str, Enum):
     FROM_TRAIN = "from_train"
     FROM_TEST = "from_test"
     SYNTHETIC = "synthetic"
-    FROM_DIR = "from_dir"
 
 
 def concatenate_datasets(

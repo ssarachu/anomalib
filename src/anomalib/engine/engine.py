@@ -163,7 +163,7 @@ class Engine:
         **kwargs,
     ) -> None:
         # TODO(ashwinvaidya17): Add model argument to engine constructor
-        # https://github.com/open-edge-platform/anomalib/issues/1639
+        # https://github.com/openvinotoolkit/anomalib/issues/1639
         if callbacks is None:
             callbacks = []
 
@@ -652,6 +652,7 @@ class Engine:
         if data_path is not None:
             dataset = PredictDataset(data_path)
             dataloaders.append(DataLoader(dataset, collate_fn=dataset.collate_fn))
+
         dataloaders = dataloaders or None
 
         if self._should_run_validation(model or self.model, ckpt_path):

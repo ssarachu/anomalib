@@ -31,6 +31,7 @@ from .image import (
     get_image_height_and_width,
     read_depth_image,
     read_image,
+    convert_image,
     read_mask,
 )
 from .label import LabelName
@@ -50,6 +51,7 @@ __all__ = [
     "get_image_height_and_width",
     "generate_perlin_noise",
     "read_image",
+    "convert_image",
     "read_mask",
     "read_depth_image",
     "random_split",

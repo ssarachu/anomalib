@@ -310,6 +310,28 @@ def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.n
     image = Image.open(path).convert("RGB")
     return to_dtype(to_image(image), torch.float32, scale=True) if as_tensor else np.array(image) / 255.0
 
+def convert_image(image: Image.Image, as_tensor: bool = False) -> torch.Tensor | np.ndarray:
+    """Read RGB image from disk.
+
+    Args:
+        path (str | Path): Path to image file
+        as_tensor (bool): If ``True``, return torch.Tensor. Defaults to ``False``
+
+    Returns:
+        torch.Tensor | np.ndarray: Image as tensor or array, normalized to [0,1]
+
+    Examples:
+        >>> image = read_image("image.jpg")
+        >>> type(image)
+        <class 'numpy.ndarray'>
+
+        >>> image = read_image("image.jpg", as_tensor=True)
+        >>> type(image)
+        <class 'torch.Tensor'>
+    """
+    image = image.convert("RGB")
+    return to_dtype(to_image(image), torch.float32, scale=True) if as_tensor else np.array(image) / 255.0
+
 
 def read_mask(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.ndarray:
     """Read grayscale mask from disk.

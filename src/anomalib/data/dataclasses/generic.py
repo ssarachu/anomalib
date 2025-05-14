@@ -741,20 +741,42 @@ class BatchIterateMixin(Generic[ItemT]):
         """
         yield from self.items
 
+    # @property
+    # def items(self) -> list[ItemT]:
+    #     """Convert the batch to a list of DatasetItem objects.
+
+    #     Returns:
+    #         List of individual items from the batch
+    #     """
+    #     batch_dict = asdict(self)
+    #     return [
+    #         self.item_class(
+    #             **{key: value[i] if hasattr(value, "__getitem__") else None for key, value in batch_dict.items()},
+    #         )
+    #         for i in range(self.batch_size)
+    #     ]
+
     @property
     def items(self) -> list[ItemT]:
-        """Convert the batch to a list of DatasetItem objects.
-
-        Returns:
-            List of individual items from the batch
-        """
         batch_dict = asdict(self)
-        return [
-            self.item_class(
-                **{key: value[i] if hasattr(value, "__getitem__") else None for key, value in batch_dict.items()},
-            )
-            for i in range(self.batch_size)
-        ]
+        batch_size = self.batch_size
+
+        items = []
+        for i in range(batch_size):
+            item_kwargs = {}
+            for key, value in batch_dict.items():
+                if isinstance(value, torch.Tensor):
+                    if value.ndim == 0:
+                        # scalar tensor
+                        item_kwargs[key] = value.item()
+                    else:
+                        item_kwargs[key] = value[i]
+                elif hasattr(value, "__getitem__") and not isinstance(value, (str, bytes)):
+                    item_kwargs[key] = value[i]
+                else:
+                    item_kwargs[key] = value  # scalar, constant, or non-indexable
+            items.append(self.item_class(**item_kwargs))
+        return items
 
     def __len__(self) -> int:
         """Get the batch size.

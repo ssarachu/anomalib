@@ -37,6 +37,7 @@ from PIL import Image
 
 from anomalib.data import ImageItem
 from anomalib.utils.path import convert_to_title_case
+from torchvision.transforms.functional import to_pil_image
 from anomalib.visualization.image.functional import (
     add_text_to_image,
     create_image_grid,
@@ -319,7 +320,10 @@ def visualize_image_item(
         image: Image.Image | None = None
         if field == "image":
             # NOTE: use get_visualize_function(field) when input transforms are introduced in models.
-            image = Image.open(item.image_path).convert("RGB")
+            try:
+                image = Image.open(item.image_path).convert("RGB")
+            except Exception as e:
+                image = to_pil_image(item.image).convert("RGB")
         else:
             field_value = getattr(item, field, None)
             if field_value is not None:
