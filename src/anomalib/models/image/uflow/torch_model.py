@@ -135,6 +135,8 @@ class UflowModel(nn.Module):
         affine_clamp: float = 2.0,
         affine_subnet_channels_ratio: float = 1.0,
         permute_soft: bool = False,
+        tap_blocks: bool = False,
+        use_pos_embedding: bool = True,
     ) -> None:
         super().__init__()
 
@@ -143,7 +145,7 @@ class UflowModel(nn.Module):
         self.affine_subnet_channels_ratio = affine_subnet_channels_ratio
         self.permute_soft = permute_soft
 
-        self.feature_extractor = get_feature_extractor(backbone, input_size)
+        self.feature_extractor = get_feature_extractor(backbone, input_size, tap_blocks=tap_blocks, use_pos_embedding=use_pos_embedding)
         self.flow = self.build_flow(flow_steps)
         self.anomaly_map_generator = AnomalyMapGenerator(input_size)
 

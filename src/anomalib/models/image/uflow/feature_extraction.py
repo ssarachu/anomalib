@@ -7,15 +7,26 @@ anomaly detection. It provides:
 2. Utility function to get appropriate feature extractor
 3. Support for multiple scales of feature extraction
 
+Supported backbone architectures:
+- ResNet-based: resnet18, wide_resnet50_2
+- Vision Transformer: mcait (CaiT models)
+- DINO/DINOv2: vit_small_patch16_224.dino, vit_base_patch16_224.dino,
+  vit_large_patch14_dinov2.lvd142m
+
 Example:
     >>> from anomalib.models.image.uflow.feature_extraction import get_feature_extractor
     >>> extractor = get_feature_extractor(backbone="resnet18")
     >>> features = extractor(torch.randn(1, 3, 256, 256))
+    >>> 
+    >>> # Using DINO backbone
+    >>> dino_extractor = get_feature_extractor(backbone="vit_small_patch16_224.dino")
+    >>> dino_features = dino_extractor(torch.randn(1, 3, 224, 224))
 
 See Also:
     - :func:`get_feature_extractor`: Factory function to get feature extractors
     - :class:`LayerNormFeatureExtractor`: Main feature extractor implementation
     - :class:`CaitFeatureExtractor`: Alternative feature extractor
+    - :class:`DINOFeatureExtractor`: DINO/DINOv2 based feature extractor
 """
 
 # Copyright (C) 2023-2024 Intel Corporation
@@ -30,10 +41,17 @@ from torch import nn
 
 from anomalib.models.components.feature_extractors import TimmFeatureExtractor
 
-AVAILABLE_EXTRACTORS = ["mcait", "resnet18", "wide_resnet50_2"]
+AVAILABLE_EXTRACTORS = [
+    "mcait", 
+    "resnet18", 
+    "wide_resnet50_2",
+    "vit_small_patch16_224.dino",
+    "vit_base_patch16_224.dino", 
+    "vit_large_patch14_dinov2.lvd142m"
+]
 
 
-def get_feature_extractor(backbone: str, input_size: tuple[int, int] = (256, 256)) -> nn.Module:
+def get_feature_extractor(backbone: str, input_size: tuple[int, int] = (256, 256), tap_blocks: bool = False, use_pos_embedding: bool = True) -> nn.Module:
     """Get feature extractor based on specified backbone architecture.
 
     This function returns a feature extractor model based on the specified backbone
@@ -41,9 +59,11 @@ def get_feature_extractor(backbone: str, input_size: tuple[int, int] = (256, 256
 
     Args:
         backbone (str): Name of the backbone architecture to use. Must be one of
-            ``["mcait", "resnet18", "wide_resnet50_2"]``.
+            ``["mcait", "resnet18", "wide_resnet50_2", "vit_small_patch16_224.dino", 
+            "vit_base_patch16_224.dino", "vit_large_patch14_dinov2.lvd142m"]``.
         input_size (tuple[int, int], optional): Input image dimensions as
-            ``(height, width)``. Defaults to ``(256, 256)``.
+            ``(height, width)``. Defaults to ``(256, 256)``. Note that DINO models
+            have fixed input sizes (224 or 518) regardless of this parameter.
 
     Returns:
         nn.Module: Feature extractor model instance.
@@ -56,10 +76,15 @@ def get_feature_extractor(backbone: str, input_size: tuple[int, int] = (256, 256
         >>> from anomalib.models.image.uflow.feature_extraction import get_feature_extractor
         >>> extractor = get_feature_extractor(backbone="resnet18")
         >>> features = extractor(torch.randn(1, 3, 256, 256))
+        >>> 
+        >>> # Using DINO backbone
+        >>> dino_extractor = get_feature_extractor(backbone="vit_small_patch16_224.dino")
+        >>> dino_features = dino_extractor(torch.randn(1, 3, 224, 224))
 
     See Also:
         - :class:`LayerNormFeatureExtractor`: Main feature extractor implementation
         - :class:`CaitFeatureExtractor`: Alternative feature extractor
+        - :class:`DINOFeatureExtractor`: DINO/DINOv2 based feature extractor
     """
     if backbone not in AVAILABLE_EXTRACTORS:
         msg = f"Feature extractor must be one of {AVAILABLE_EXTRACTORS}."
@@ -72,8 +97,11 @@ def get_feature_extractor(backbone: str, input_size: tuple[int, int] = (256, 256
             input_size,
             layers=("layer1", "layer2", "layer3"),
         ).eval()
-    if backbone == "mcait":
+    elif backbone == "mcait":
         feature_extractor = CaitFeatureExtractor().eval()
+    elif backbone in {"vit_small_patch16_224.dino", "vit_base_patch16_224.dino", 
+                      "vit_large_patch14_dinov2.lvd142m"}:
+        feature_extractor = DINOFeatureExtractor(backbone, tap_blocks=tap_blocks, use_pos_embed=use_pos_embedding).eval()
 
     return feature_extractor
 
@@ -288,3 +316,123 @@ class CaitFeatureExtractor(nn.Module):
             normalized_features.append(x)
 
         return normalized_features
+
+
+class DINOFeatureExtractor(nn.Module):
+    """Feature extractor based on DINO and DINOv2 Vision Transformer backbones.
+
+    This extractor aligns with U-Flow expectations: multi-scale, normalized outputs.
+    Optionally taps intermediate transformer blocks for additional feature levels.
+    Optionally disables positional embeddings to avoid position bias.
+
+    Args:
+        backbone (str): Name of the DINO/DINOv2 model.
+        tap_blocks (bool): If True, taps an intermediate block for a second feature scale.
+        use_pos_embed (bool): If False, disables adding positional embedding to patch tokens.
+    """
+
+    def __init__(self, backbone: str, tap_blocks: bool = False, use_pos_embed: bool = True) -> None:
+        super().__init__()
+
+        if backbone in {"vit_small_patch16_224.dino", "vit_base_patch16_224.dino"}:
+            self.input_size = 224
+        elif backbone == "vit_large_patch14_dinov2.lvd142m":
+            self.input_size = 518
+        else:
+            raise ValueError(f"Unsupported DINO backbone: {backbone}")
+
+        self.tap_blocks = tap_blocks
+        self.use_pos_embed = use_pos_embed
+        print(f"self.use_pos_embed: {self.use_pos_embed}")
+
+        self.model = timm.create_model(
+            backbone,
+            pretrained=True,
+            num_classes=0,
+        )
+        self.model.eval()
+
+        # Extract model-specific parameters
+        self.embed_dim = self.model.embed_dim
+        self.patch_size = self.model.patch_embed.patch_size[0]  # assumes square patches
+
+        # Define output scales (main + optionally intermediate)
+        self.channels = [self.embed_dim]
+        self.scale_factors = [self.patch_size]
+
+        if tap_blocks:
+            self.channels.append(self.embed_dim)
+            self.scale_factors.append(self.patch_size * 2)  # Simulated lower-resolution level
+
+        self.scales = range(len(self.scale_factors))
+
+        # Normalizations per scale
+        self.feature_normalizations = nn.ModuleList()
+        for scale in self.scale_factors:
+            out_dim = self.input_size // scale
+            self.feature_normalizations.append(
+                nn.LayerNorm(
+                    [self.embed_dim, out_dim, out_dim],
+                    elementwise_affine=True,
+                )
+            )
+
+        # Freeze parameters
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+    def forward(self, img: torch.Tensor) -> list[torch.Tensor]:
+        """Forward pass to extract normalized features from DINO model."""
+        if img.shape[-1] != self.input_size:
+            img = F.interpolate(img, size=(self.input_size, self.input_size), mode="bicubic", align_corners=False)
+
+        features = self.extract_features(img)
+        return self.normalize_features(features)
+
+    def extract_features(self, img: torch.Tensor) -> list[torch.Tensor]:
+        """Extracts patch tokens from ViT encoder.
+
+        Returns:
+            list[Tensor]: [final_block_features, optional_intermediate_block_features]
+        """
+        x = self.model.patch_embed(img)  # (B, N, C)
+        cls_token = self.model.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_token, x), dim=1)
+
+        # === THIS IS THE ONLY CHANGE ===
+        if self.use_pos_embed:
+            x = x + self.model.pos_embed
+        # ==============================
+
+        x = self.model.pos_drop(x)
+
+        tokens = []
+        if self.tap_blocks:
+            tap_idx = len(self.model.blocks) // 2  # Halfway block
+            for i, blk in enumerate(self.model.blocks):
+                x = blk(x)
+                if i == tap_idx:
+                    tokens.append(x.clone())
+        else:
+            for blk in self.model.blocks:
+                x = blk(x)
+
+        tokens.append(x)
+        return tokens
+
+    def normalize_features(self, features: list[torch.Tensor]) -> list[torch.Tensor]:
+        """Converts patch tokens to spatial maps and applies normalization."""
+        normed_features = []
+
+        for i, feature in enumerate(features):
+            # Remove CLS token and reshape
+            x = feature[:, 1:, :]  # (B, N, C)
+            batch_size, num_patches, channels = x.shape
+            h = w = int(num_patches ** 0.5)
+
+            x = x.permute(0, 2, 1).reshape(batch_size, channels, h, w)
+            x = self.feature_normalizations[i](x)
+            normed_features.append(x)
+
+        return normed_features
+

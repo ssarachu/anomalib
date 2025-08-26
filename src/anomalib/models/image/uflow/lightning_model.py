@@ -116,6 +116,8 @@ class Uflow(AnomalibModule):
         post_processor: PostProcessor | bool = True,
         evaluator: Evaluator | bool = True,
         visualizer: Visualizer | bool = True,
+        tap_blocks: bool = False,
+        use_pos_embedding: bool = True,
     ) -> None:
         """Initialize U-Flow model.
 
@@ -156,7 +158,9 @@ class Uflow(AnomalibModule):
         if self.input_size is None:
             msg = "Input size is required for UFlow model."
             raise ValueError(msg)
-
+        
+        self.tap_blocks = tap_blocks
+        self.use_pos_embedding = use_pos_embedding
         self.backbone = backbone
         self.flow_steps = flow_steps
         self.affine_clamp = affine_clamp
@@ -170,6 +174,8 @@ class Uflow(AnomalibModule):
             affine_clamp=self.affine_clamp,
             affine_subnet_channels_ratio=self.affine_subnet_channels_ratio,
             permute_soft=self.permute_soft,
+            tap_blocks=self.tap_blocks,
+            use_pos_embedding=self.use_pos_embedding,
         )
         self.loss = UFlowLoss()
 

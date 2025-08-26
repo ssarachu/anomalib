@@ -58,6 +58,22 @@ from .image import (
     Cfa,
     Patchcore,
     Uflow,
+    Cflow,
+    Csflow,
+    Dfkde,
+    Dfm,
+    Draem,
+    Dsr,
+    EfficientAd,
+    Fastflow,
+    Fre,
+    Ganomaly,
+    Padim,
+    ReverseDistillation,
+    Stfpm,
+    Supersimplenet,
+    VlmAd,
+    WinClip,
 )
 
 
